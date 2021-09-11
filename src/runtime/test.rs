@@ -34,7 +34,7 @@ fn test_linux_device_cgroup_to_string() {
         if #[cfg(feature = "builder")] {
             let ldc = LinuxDeviceCgroupBuilder::default()
                 .allow(true)
-                .typ(LinuxDeviceType::B)
+                .typ(LinuxDeviceType::A)
                 .major(1)
                 .minor(9)
                 .access("rwm".to_string())
@@ -42,12 +42,12 @@ fn test_linux_device_cgroup_to_string() {
         } else {
             let ldc = LinuxDeviceCgroup {
                 allow: true,
-                typ: Some(LinuxDeviceType::B),
+                typ: Some(LinuxDeviceType::A),
                 major: Some(1),
                 minor: Some(9),
                 access: Some("rwm".into()),
             };
         }
     );
-    assert_eq!(ldc.to_string(), "b 1:9 rwm");
+    assert_eq!(ldc.to_string(), "a 1:9 rwm");
 }

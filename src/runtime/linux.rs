@@ -171,6 +171,9 @@ make_pub!(
 #[serde(rename_all = "lowercase")]
 /// Device types
 pub enum LinuxDeviceType {
+    /// All
+    A,
+
     /// block (buffered)
     B,
 
@@ -186,7 +189,7 @@ pub enum LinuxDeviceType {
 
 impl Default for LinuxDeviceType {
     fn default() -> LinuxDeviceType {
-        LinuxDeviceType::B
+        LinuxDeviceType::A
     }
 }
 
@@ -194,6 +197,7 @@ impl LinuxDeviceType {
     /// Retrieve a string reference for the device type.
     pub fn as_str(&self) -> &str {
         match self {
+            Self::A => "a",
             Self::B => "b",
             Self::C => "c",
             Self::U => "u",
@@ -1209,16 +1213,17 @@ fn some_none_generator_util<T: Arbitrary>(g: &mut Gen) -> Option<T> {
 #[cfg(feature = "proptests")]
 impl Arbitrary for LinuxDeviceCgroup {
     fn arbitrary(g: &mut Gen) -> LinuxDeviceCgroup {
-        let typ_choices = ["b", "c", "u", "p"];
+        let typ_choices = ["a", "b", "c", "u", "p"];
 
         let typ_chosen = g.choose(&typ_choices).unwrap();
 
         let typ = match typ_chosen.to_string().as_str() {
+            "a" => LinuxDeviceType::A,
             "b" => LinuxDeviceType::B,
             "c" => LinuxDeviceType::C,
             "u" => LinuxDeviceType::U,
             "p" => LinuxDeviceType::P,
-            _ => LinuxDeviceType::B,
+            _ => LinuxDeviceType::A,
         };
 
         let access_choices = ["rwm", "m"];
