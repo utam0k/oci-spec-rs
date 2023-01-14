@@ -76,8 +76,8 @@ pub struct Linux {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     /// IntelRdt contains Intel Resource Director Technology (RDT)
-    /// information for handling resource constraints (e.g., L3
-    /// cache, memory bandwidth) for the container.
+    /// information for handling resource constraints and monitoring metrics
+    /// (e.g., L3 cache, memory bandwidth) for the container.
     intel_rdt: Option<LinuxIntelRdt>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -310,6 +310,10 @@ pub struct LinuxMemory {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Enables hierarchical memory accounting
     use_hierarchy: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Enables checking if a new memory limit is lower
+    check_before_update: Option<bool>,
 }
 
 #[derive(
@@ -551,7 +555,7 @@ pub struct LinuxHugepageLimit {
     #[serde(default)]
     #[getset(get = "pub", set = "pub")]
     /// Pagesize is the hugepage size.
-    /// Format: "<size><unit-prefix>B' (e.g. 64KB, 2MB, 1GB, etc.)
+    /// Format: "&lt;size&gt;&lt;unit-prefix&gt;B' (e.g. 64KB, 2MB, 1GB, etc.)
     page_size: String,
 
     #[serde(default)]
@@ -899,8 +903,8 @@ impl From<&LinuxDevice> for LinuxDeviceCgroup {
         LinuxDeviceCgroup {
             allow: true,
             typ: linux_device.typ.into(),
-            major: Some(linux_device.major as i64),
-            minor: Some(linux_device.minor as i64),
+            major: Some(linux_device.major),
+            minor: Some(linux_device.minor),
             access: "rwm".to_string().into(),
         }
     }
@@ -1224,8 +1228,9 @@ pub fn get_default_readonly_paths() -> Vec<String> {
     build_fn(error = "OciSpecError")
 )]
 #[getset(get = "pub", set = "pub")]
-/// LinuxIntelRdt has container runtime resource constraints for Intel RDT
-/// CAT and MBA features which introduced in Linux 4.10 and 4.12 kernel.
+/// LinuxIntelRdt has container runtime resource constraints for Intel RDT CAT and MBA
+/// features and flags enabling Intel RDT CMT and MBM features.
+/// Intel RDT features are available in Linux 4.14 and newer kernel versions.
 pub struct LinuxIntelRdt {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     /// The identity for RDT Class of Service.
@@ -1233,16 +1238,26 @@ pub struct LinuxIntelRdt {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     /// The schema for L3 cache id and capacity bitmask (CBM).
-    /// Format: "L3:<cache_id0>=<cbm0>;<cache_id1>=<cbm1>;..."
+    /// Format: "L3:&lt;cache_id0&gt;=&lt;cbm0&gt;;&lt;cache_id1&gt;=&lt;cbm1&gt;;..."
     l3_cache_schema: Option<String>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     /// The schema of memory bandwidth per L3 cache id.
-    /// Format: "MB:<cache_id0>=bandwidth0;<cache_id1>=bandwidth1;..."
+    /// Format: "MB:&lt;cache_id0&gt;=bandwidth0;&lt;cache_id1&gt;=bandwidth1;..."
     /// The unit of memory bandwidth is specified in "percentages" by
     /// default, and in "MBps" if MBA Software Controller is
     /// enabled.
     mem_bw_schema: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// EnableCMT is the flag to indicate if the Intel RDT CMT is enabled. CMT (Cache Monitoring Technology) supports monitoring of
+    /// the last-level cache (LLC) occupancy for the container.
+    enable_cmt: Option<bool>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// EnableMBM is the flag to indicate if the Intel RDT MBM is enabled. MBM (Memory Bandwidth Monitoring) supports monitoring of
+    /// total and local memory bandwidth for the container.
+    enable_mbm: Option<bool>,
 }
 
 #[derive(
@@ -1345,6 +1360,7 @@ impl Arbitrary for LinuxMemory {
             swappiness: some_none_generator_util::<u64>(g),
             disable_oom_killer: some_none_generator_util::<bool>(g),
             use_hierarchy: some_none_generator_util::<bool>(g),
+            check_before_update: some_none_generator_util::<bool>(g),
         }
     }
 }
