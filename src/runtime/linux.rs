@@ -3,7 +3,7 @@ use crate::error::{oci_error, OciSpecError};
 use derive_builder::Builder;
 use getset::{CopyGetters, Getters, Setters};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, convert::TryFrom, path::PathBuf};
+use std::{collections::HashMap, convert::TryFrom, path::PathBuf, vec};
 
 #[derive(Builder, Clone, Debug, Deserialize, Eq, Getters, Setters, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -84,6 +84,10 @@ pub struct Linux {
     /// Personality contains configuration for the Linux personality
     /// syscall.
     personality: Option<LinuxPersonality>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// TimeOffsets specifies the offset for supporting time namespaces.
+    time_offsets: Option<HashMap<String, String>>,
 }
 
 // Default impl for Linux (see funtions for more info)
@@ -128,6 +132,34 @@ impl Default for Linux {
             seccomp: None,
             intel_rdt: None,
             personality: None,
+            time_offsets: None,
+        }
+    }
+}
+
+impl Linux {
+    /// Return rootless Linux configuration.
+    pub fn rootless(uid: u32, gid: u32) -> Self {
+        let mut namespaces = get_default_namespaces();
+        namespaces.retain(|ns| ns.typ != LinuxNamespaceType::Network);
+        namespaces.push(LinuxNamespace {
+            typ: LinuxNamespaceType::User,
+            ..Default::default()
+        });
+        Self {
+            resources: None,
+            uid_mappings: Some(vec![LinuxIdMapping {
+                container_id: 0,
+                host_id: uid,
+                size: 1,
+            }]),
+            gid_mappings: Some(vec![LinuxIdMapping {
+                container_id: 0,
+                host_id: gid,
+                size: 1,
+            }]),
+            namespaces: Some(namespaces),
+            ..Default::default()
         }
     }
 }
@@ -179,6 +211,7 @@ pub enum LinuxDeviceType {
     P,
 }
 
+#[allow(clippy::derivable_impls)] // because making it clear that All is the default
 impl Default for LinuxDeviceType {
     fn default() -> LinuxDeviceType {
         LinuxDeviceType::A
@@ -225,15 +258,17 @@ pub struct LinuxDeviceCgroup {
     /// Allow or deny
     allow: bool,
 
-    #[serde(default, rename = "type")]
+    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
     #[getset(get_copy = "pub", set = "pub")]
     /// Device type, block, char, etc.
     typ: Option<LinuxDeviceType>,
 
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[getset(get_copy = "pub", set = "pub")]
     /// Device's major number
     major: Option<i64>,
 
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[getset(get_copy = "pub", set = "pub")]
     /// Device's minor number
     minor: Option<i64>,
@@ -752,6 +787,9 @@ pub enum LinuxNamespaceType {
 
     /// Network Namespace for isolating network devices, ports, stacks etc.
     Network = 0x40000000,
+
+    /// Time Namespace for isolating the clocks
+    Time = 0x00000080,
 }
 
 impl TryFrom<&str> for LinuxNamespaceType {
@@ -766,9 +804,9 @@ impl TryFrom<&str> for LinuxNamespaceType {
             "user" => Ok(LinuxNamespaceType::User),
             "pid" => Ok(LinuxNamespaceType::Pid),
             "net" => Ok(LinuxNamespaceType::Network),
+            "time" => Ok(LinuxNamespaceType::Time),
             _ => Err(oci_error(format!(
-                "unknown namespace {}, could not convert",
-                namespace
+                "unknown namespace {namespace}, could not convert"
             ))),
         }
     }
@@ -834,6 +872,10 @@ pub fn get_default_namespaces() -> Vec<LinuxNamespace> {
         },
         LinuxNamespace {
             typ: LinuxNamespaceType::Mount,
+            path: Default::default(),
+        },
+        LinuxNamespace {
+            typ: LinuxNamespaceType::Cgroup,
             path: Default::default(),
         },
     ]
@@ -1133,6 +1175,7 @@ impl Default for LinuxSeccompOperator {
     PartialEq,
     Serialize,
 )]
+#[serde(rename_all = "camelCase")]
 #[builder(
     default,
     pattern = "owned",
@@ -1232,7 +1275,7 @@ pub fn get_default_readonly_paths() -> Vec<String> {
 /// features and flags enabling Intel RDT CMT and MBM features.
 /// Intel RDT features are available in Linux 4.14 and newer kernel versions.
 pub struct LinuxIntelRdt {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "closID")]
     /// The identity for RDT Class of Service.
     clos_id: Option<String>,
 

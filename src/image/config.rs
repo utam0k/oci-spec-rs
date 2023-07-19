@@ -14,6 +14,10 @@ use std::{
     path::Path,
 };
 
+/// In theory, this key is not standard.  In practice, it's used by at least the
+/// RHEL UBI images for a long time.
+pub const LABEL_VERSION: &str = "version";
+
 #[derive(
     Builder,
     Clone,
@@ -218,6 +222,20 @@ impl ImageConfiguration {
     /// ```
     pub fn to_string_pretty(&self) -> Result<String> {
         to_string(&self, true)
+    }
+
+    /// Retrieve the version number associated with this configuration.  This will try
+    /// to use several well-known label keys.
+    pub fn version(&self) -> Option<&str> {
+        let labels = self.config().as_ref().and_then(|c| c.labels().as_ref());
+        if let Some(labels) = labels {
+            for k in [super::ANNOTATION_VERSION, LABEL_VERSION] {
+                if let Some(v) = labels.get(k) {
+                    return Some(v.as_str());
+                }
+            }
+        }
+        None
     }
 }
 
@@ -464,7 +482,7 @@ mod tests {
     use crate::image::Os;
 
     fn create_config() -> ImageConfiguration {
-        let configuration = ImageConfigurationBuilder::default()
+        ImageConfigurationBuilder::default()
             .created("2015-10-31T22:22:56.015925234Z".to_owned())
             .author("Alyssa P. Hacker <alyspdev@example.com>".to_owned())
             .architecture(Arch::Amd64)
@@ -512,9 +530,7 @@ mod tests {
                 .expect("build history"),
             ])
             .build()
-            .expect("build configuration");
-
-        configuration
+            .expect("build configuration")
     }
 
     fn get_config_path() -> PathBuf {
@@ -541,11 +557,11 @@ mod tests {
 
         // act
         let actual = ImageConfiguration::from_reader(&*reader).expect("from reader");
-        println!("{:#?}", actual);
+        println!("{actual:#?}");
 
         // assert
         let expected = create_config();
-        println!("{:#?}", expected);
+        println!("{expected:#?}");
 
         assert_eq!(actual, expected);
     }
